@@ -1,0 +1,12 @@
+node_modules
+.wwebjs_cache
+.wwebjs_auth
+.wwebjs_store
+*.log
+*.sqlite
+*.db
+*.localstorage
+*.temp
+.env
+
+sesionServicio

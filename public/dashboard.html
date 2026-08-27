@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+    header {
+      background: #075e54;
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header h1 { font-size: 20px; font-weight: 600; }
+    header span { font-size: 13px; opacity: 0.8; }
+
+    main { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .top-bar h2 { font-size: 16px; color: #555; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 9px 18px;
+      transition: opacity .15s;
+    }
+    button:hover { opacity: .85; }
+    .btn-primary { background: #25d366; color: white; }
+    .btn-danger  { background: #e74c3c; color: white; }
+    .btn-warning { background: #f39c12; color: white; }
+    .btn-secondary { background: #e0e0e0; color: #333; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+    .card-title { font-size: 16px; font-weight: 600; }
+    .card-id { font-size: 12px; color: #888; margin-top: 2px; }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-ready        { background: #d4edda; color: #155724; }
+    .badge-qr           { background: #fff3cd; color: #856404; }
+    .badge-loading      { background: #cce5ff; color: #004085; }
+    .badge-initializing { background: #e2e3e5; color: #383d41; }
+    .badge-disconnected { background: #f8d7da; color: #721c24; }
+    .badge-auth_failure { background: #f8d7da; color: #721c24; }
+
+    .status-msg { font-size: 13px; color: #666; }
+
+    .qr-box { text-align: center; }
+    .qr-box img { width: 200px; height: 200px; border-radius: 8px; border: 1px solid #eee; }
+    .qr-label { font-size: 12px; color: #888; margin-top: 6px; }
+
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .actions button { font-size: 12px; padding: 7px 12px; }
+
+    .created { font-size: 11px; color: #bbb; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.4);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .modal h3 { font-size: 18px; }
+    .modal label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; }
+    .modal input {
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    .modal input:focus { border-color: #25d366; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+    .empty {
+      grid-column: 1/-1;
+      text-align: center;
+      color: #aaa;
+      padding: 60px 20px;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>WhatsApp Dashboard</h1>
+  <span id="lastUpdate">Actualizando...</span>
+</header>
+
+<main>
+  <div class="top-bar">
+    <h2 id="instanceCount">Cargando instancias...</h2>
+    <button class="btn-primary" onclick="openModal()">+ Nueva instancia</button>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<!-- Modal crear instancia -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>Nueva instancia</h3>
+    <div>
+      <label for="inputId">ID (sin espacios)</label>
+      <input id="inputId" placeholder="ej: ventas" maxlength="30" />
+    </div>
+    <div>
+      <label for="inputLabel">Nombre amigable</label>
+      <input id="inputLabel" placeholder="ej: WhatsApp Ventas" maxlength="50" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn-primary" onclick="createInstance()">Crear</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '/api/whatsapp';
+  let polling = null;
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
+  function badgeClass(status) {
+    return `badge badge-${status}`;
+  }
+
+  function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('es', { day:'2-digit', month:'2-digit', year:'numeric' })
+      + ' ' + d.toLocaleTimeString('es', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function renderCard(inst) {
+    const qrSection = inst.hasQr && inst.status === 'qr'
+      ? `<div class="qr-box">
+           <img id="qr-${inst.id}" src="" alt="QR" />
+           <div class="qr-label">Escanea con WhatsApp</div>
+         </div>`
+      : '';
+
+    return `
+      <div class="card" id="card-${inst.id}">
+        <div class="card-header">
+          <div>
+            <div class="card-title">${escHtml(inst.label)}</div>
+            <div class="card-id">ID: ${escHtml(inst.id)}</div>
+          </div>
+          <span class="${badgeClass(inst.status)}">${escHtml(inst.statusMessage)}</span>
+        </div>
+        ${qrSection}
+        <div class="actions">
+          <button class="btn-warning" onclick="newQr('${inst.id}')">Nuevo QR</button>
+          <button class="btn-secondary" onclick="restartInstance('${inst.id}')">Reiniciar</button>
+          <button class="btn-danger" onclick="deleteInstance('${inst.id}')">Eliminar</button>
+        </div>
+        <div class="created">Creada: ${formatDate(inst.createdAt)}</div>
+      </div>
+    `;
+  }
+
+  function escHtml(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Fetch y polling ─────────────────────────────────────────────────────────
+
+  async function fetchInstances() {
+    try {
+      const res = await fetch(`${API}/instances`);
+      const list = await res.json();
+
+      document.getElementById('instanceCount').textContent =
+        `${list.length} instancia${list.length !== 1 ? 's' : ''}`;
+      document.getElementById('lastUpdate').textContent =
+        'Actualizado: ' + new Date().toLocaleTimeString('es');
+
+      const grid = document.getElementById('grid');
+
+      if (list.length === 0) {
+        grid.innerHTML = '<div class="empty">No hay instancias. Crea una para comenzar.</div>';
+        return;
+      }
+
+      // Actualizar solo lo necesario para no parpadear
+      const existingIds = new Set([...grid.querySelectorAll('.card')].map(c => c.id.replace('card-','')));
+      const newIds = new Set(list.map(i => i.id));
+
+      // Eliminar cards que ya no existen
+      for (const id of existingIds) {
+        if (!newIds.has(id)) document.getElementById(`card-${id}`)?.remove();
+      }
+
+      for (const inst of list) {
+        const existing = document.getElementById(`card-${inst.id}`);
+        if (!existing) {
+          grid.insertAdjacentHTML('beforeend', renderCard(inst));
+        } else {
+          // Actualizar badge y status
+          const badge = existing.querySelector('.badge');
+          if (badge) {
+            badge.className = badgeClass(inst.status);
+            badge.textContent = inst.statusMessage;
+          }
+          // Actualizar QR
+          const qrBox = existing.querySelector('.qr-box');
+          if (inst.hasQr && inst.status === 'qr') {
+            if (!qrBox) {
+              existing.querySelector('.card-header').insertAdjacentHTML(
+                'afterend',
+                `<div class="qr-box"><img id="qr-${inst.id}" src="" alt="QR"/><div class="qr-label">Escanea con WhatsApp</div></div>`
+              );
+            }
+          } else if (qrBox) {
+            qrBox.remove();
+          }
+        }
+
+        // Cargar imagen QR si corresponde
+        if (inst.hasQr && inst.status === 'qr') {
+          loadQrImage(inst.id);
+        }
+      }
+    } catch (e) {
+      document.getElementById('lastUpdate').textContent = 'Error al conectar con el servidor';
+    }
+  }
+
+  async function loadQrImage(id) {
+    try {
+      const res = await fetch(`${API}/instances/${id}/status`);
+      const data = await res.json();
+      const img = document.getElementById(`qr-${id}`);
+      if (img && data.qrImage) img.src = data.qrImage;
+    } catch (_) {}
+  }
+
+  function startPolling() {
+    fetchInstances();
+    polling = setInterval(fetchInstances, 3000);
+  }
+
+  // ── Acciones ─────────────────────────────────────────────────────────────────
+
+  async function deleteInstance(id) {
+    if (!confirm(`¿Eliminar la instancia "${id}"? Se borrará la sesión.`)) return;
+    await fetch(`${API}/instances/${id}`, { method: 'DELETE' });
+    fetchInstances();
+  }
+
+  async function restartInstance(id) {
+    if (!confirm(`¿Reiniciar la instancia "${id}"? Se perderá la sesión actual.`)) return;
+    await fetch(`${API}/instances/${id}/restart`, { method: 'POST' });
+    fetchInstances();
+  }
+
+  async function newQr(id) {
+    await fetch(`${API}/instances/${id}/new-qr`, { method: 'POST' });
+    fetchInstances();
+  }
+
+  // ── Modal ────────────────────────────────────────────────────────────────────
+
+  function openModal() {
+    document.getElementById('inputId').value = '';
+    document.getElementById('inputLabel').value = '';
+    document.getElementById('modalOverlay').classList.add('open');
+    document.getElementById('inputId').focus();
+  }
+
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('open');
+  }
+
+  async function createInstance() {
+    const id = document.getElementById('inputId').value.trim();
+    const label = document.getElementById('inputLabel').value.trim();
+
+    if (!id) { alert('El ID es requerido'); return; }
+
+    const res = await fetch(`${API}/instances`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, label }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Error al crear instancia'); return; }
+
+    closeModal();
+    fetchInstances();
+  }
+
+  // Cerrar modal al hacer click fuera
+  document.getElementById('modalOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  // Enter en inputs del modal
+  document.getElementById('inputLabel').addEventListener('keydown', e => {
+    if (e.key === 'Enter') createInstance();
+  });
+
+  startPolling();
+</script>
+</body>
+</html>
