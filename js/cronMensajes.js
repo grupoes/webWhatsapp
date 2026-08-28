@@ -36,7 +36,11 @@ function iniciarCron(instances) {
           const telefono = factura.cliente_telefono;
           if (!telefono) continue;
 
-          const chatId  = `${telefono}@c.us`;
+          const telefonoLimpio = telefono.replace(/[^0-9]/g, "");
+          const telefonoCompleto = telefonoLimpio.startsWith("51")
+            ? telefonoLimpio
+            : `51${telefonoLimpio}`;
+          const chatId = `${telefonoCompleto}@c.us`;
           const pdfUrl  = `${urlBase}/${factura.pdf_url}`;
           const caption = formatearCaption(factura);
 
