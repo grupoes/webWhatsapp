@@ -17,7 +17,14 @@ function iniciarCron(instances) {
     `[cron] Iniciado — instancia: ${instanceId} | schedule: ${schedule}`,
   );
 
+  let isRunning = false;
+
   cron.schedule(schedule, async () => {
+    if (isRunning) {
+      console.log("[cron] ⏳ Ejecución en progreso, se omite este disparo.");
+      return;
+    }
+    isRunning = true;
     console.log("[cron] Consultando facturas pendientes...");
     try {
       const { data } = await axios.get(apiUrl);
@@ -75,6 +82,8 @@ function iniciarCron(instances) {
       }
     } catch (err) {
       console.error("[cron] ❌ Error consultando la API:", err.message);
+    } finally {
+      isRunning = false;
     }
   });
 }
