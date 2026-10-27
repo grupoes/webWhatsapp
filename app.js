@@ -55,6 +55,9 @@ server.listen(port, () => {
 
   const { iniciarCron } = require("./js/cronMensajes");
   iniciarCron(instances);
+
+  const { iniciarCronFacturacion } = require("./js/cronFacturacion");
+  iniciarCronFacturacion();
 });
 
 process.on("SIGINT", () => {
